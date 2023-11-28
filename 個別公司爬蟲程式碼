@@ -1,0 +1,46 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+total_pages = 5  # 根據實際情況替換總頁數
+jobs_data = []  # 用於儲存職缺資訊的列表
+
+for page in range(1, total_pages + 1):
+    url = f'https://www.1111.com.tw/search/job?ks=%e5%8f%b0%e7%81%a3%e7%a9%8d%e9%ab%94%e9%9b%bb%e8%b7%af&page={page}'
+    response = requests.get(url)
+    response.encoding = 'utf-8'
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 根據您提供的結構找到所有職缺的區塊
+    job_info_blocks = soup.find_all('div', class_='job_item_info')
+
+    for job_info_block in job_info_blocks:
+        # 在每個區塊中尋找職缺名稱和詳細資訊
+        job_title_tag = job_info_block.find('h5', class_='card-title')
+        job_detail_tag = job_info_block.find('p', class_='card-text job_item_description body_4')
+        job_location_container = job_info_block.find('div', class_='job_item_detail d-flex body_4')
+        job_location_tag = job_location_container.find('a') if job_location_container else None
+        job_salary_tag = job_info_block.find('div', class_='job_item_detail_salary ml-3 font-weight-style digit_6')
+
+        if job_title_tag and job_detail_tag and job_location_tag and job_salary_tag:
+            job_name = job_title_tag.text.strip()
+            job_link = 'https://www.1111.com.tw' + job_title_tag.parent.get('href', '').strip()
+            job_details = job_detail_tag.text.strip()
+            job_location = job_location_tag.text.strip()  # 提取上班地點文字
+            job_salary = job_salary_tag.text.strip()  # 提取薪水資訊文字
+
+            jobs_data.append({
+                '職缺名稱': job_name,
+                '連結': job_link,
+                '職缺資訊': job_details,
+                '上班地點': job_location,
+                '薪水': job_salary
+            })
+
+# 將列表轉換成DataFrame
+jobs_df = pd.DataFrame(jobs_data)
+
+# 顯示DataFrame以確認資料
+print(jobs_df)
+
+jobs_df.to_excel('1111人力銀行_台積電職缺.xlsx')
