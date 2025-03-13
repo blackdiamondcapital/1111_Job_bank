@@ -1,0 +1,64 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+import openai
+import pymysql
+import os
+import requests
+
+# 設定 OpenAI API Key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# FastAPI 應用
+app = FastAPI()
+
+# MySQL 連線設定
+db_config = {
+    "host": "your-db-host",
+    "user": "your-username",
+    "password": "your-password",
+    "database": "job_db"
+}
+
+# 查詢資料庫函數
+def query_db(sql):
+    conn = pymysql.connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    result = cursor.fetchall()
+    conn.close()
+    return result
+
+# 定義 API 輸入格式
+class JobQuery(BaseModel):
+    position: str  # 例如 "數據分析師"
+
+# AI 查詢處理函數
+def ask_ai(query, jobs):
+    prompt = f"使用者詢問職缺：{query}\n目前有以下相關工作機會：{jobs}\n請根據這些資料給出友善、清楚的回應。"
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "system", "content": "你是一個專業的求職顧問，幫助使用者找到合適的工作。"},
+                  {"role": "user", "content": prompt}]
+    )
+    
+    return response["choices"][0]["message"]["content"]
+
+# API 路由
+@app.post("/search_jobs")
+def search_jobs(data: JobQuery):
+    position = data.position.lower()
+    
+    # 查詢內部職缺
+    jobs = query_db(f"SELECT title, company, salary FROM jobs WHERE title LIKE '%{position}%' LIMIT 5;")
+    job_list = [f"{j[0]} - {j[1]}，薪資：{j[2]}" for j in jobs]
+
+    # 若資料庫無結果，可查詢 104 人力銀行 API
+    if not job_list:
+        external_jobs = requests.get(f"https://api.1111.com.tw/jobs?keyword={position}").json() #舉例
+        job_list = [f"{j['title']} - {j['company']}" for j in external_jobs.get("data", [])[:5]]
+
+    # AI 生成友善回應
+    return {"response": ask_ai(position, job_list)}
+
+# 啟動伺服器（執行 `uvicorn main:app --reload`）
